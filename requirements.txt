@@ -1,0 +1,33 @@
+# Core Framework
+Django>=5.0,<5.1
+djangorestframework>=3.14.0
+
+# Database
+psycopg2-binary>=2.9.9
+
+# Async Task Queue
+celery>=5.3.4
+redis>=5.0.1
+django-celery-beat>=2.6.0
+
+# Telegram Bot
+python-telegram-bot>=20.7
+
+# AI Integration
+google-generativeai>=0.3.0
+
+# Environment & Config
+python-dotenv>=1.0.0
+pytz>=2024.1
+
+# HTTP & Networking
+requests>=2.31.0
+
+# WSGI Server
+gunicorn>=21.2.0
+
+# Development (optional)
+black>=23.12.0
+flake8>=7.0.0
+pytest>=7.4.3
+pytest-django>=4.7.0
