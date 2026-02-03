@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 def telegram_webhook(request):
     """
     Telegram webhook endpoint.
-    Receives messages from Telegram and triggers async processing.
+    Receives messages and button callbacks from Telegram.
     """
     try:
         # Parse Telegram update
         data = json.loads(request.body)
         logger.info(f"Received Telegram update: {data}")
+        
+        # Handle callback query (button press)
+        callback_query = data.get('callback_query')
+        if callback_query:
+            return _handle_callback_query(callback_query)
         
         # Extract message
         message = data.get('message')
@@ -60,6 +65,62 @@ def telegram_webhook(request):
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         return HttpResponse(status=500)
+
+
+def _handle_callback_query(callback_query: dict) -> HttpResponse:
+    """
+    Handle button callback from Telegram.
+    """
+    from .models import Task
+    from .telegram_service import get_telegram_service
+    import asyncio
+    
+    try:
+        callback_data = callback_query.get('data', '')
+        chat_id = callback_query.get('from', {}).get('id')
+        callback_id = callback_query.get('id')
+        
+        logger.info(f"Callback received: {callback_data} from chat_id {chat_id}")
+        
+        # Parse callback data (format: action_taskid)
+        if '_' in callback_data:
+            action, task_id = callback_data.split('_', 1)
+            task_id = int(task_id)
+            
+            # Get user from chat_id
+            user = _get_or_create_user_from_chat_id(chat_id)
+            if not user:
+                return HttpResponse(status=200)
+            
+            # Get task
+            try:
+                task = Task.objects.get(id=task_id, user=user)
+                
+                if action == 'complete':
+                    task.mark_completed()
+                    response = f"✅ Task completed: {task.title}"
+                elif action == 'snooze':
+                    task.snooze(minutes=30)
+                    response = f"💤 Snoozed for 30 minutes: {task.title}"
+                else:
+                    response = "Unknown action"
+                
+                # Send acknowledgment
+                telegram_service = get_telegram_service()
+                bot = telegram_service.bot
+                asyncio.run(bot.answer_callback_query(
+                    callback_query_id=callback_id,
+                    text=response
+                ))
+                
+            except Task.DoesNotExist:
+                logger.error(f"Task {task_id} not found")
+        
+        return HttpResponse(status=200)
+        
+    except Exception as e:
+        logger.error(f"Error handling callback: {e}", exc_info=True)
+        return HttpResponse(status=200)
 
 
 def _get_or_create_user_from_chat_id(chat_id: int) -> User:

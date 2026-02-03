@@ -131,7 +131,7 @@ def schedule_reminder(self, task_id: int):
         telegram_service = get_telegram_service()
         
         # Create reminder record
-        message = _format_reminder_message(task)
+        message, buttons = _format_reminder_message(task)
         reminder = Reminder.objects.create(
             task=task,
             channel='telegram',
@@ -140,8 +140,8 @@ def schedule_reminder(self, task_id: int):
             message_content=message
         )
         
-        # Send reminder
-        telegram_service.send_message(task.user, message)
+        # Send reminder with buttons
+        telegram_service.send_message(task.user, message, buttons=buttons)
         reminder.mark_sent()
         
         # Update task
@@ -183,7 +183,13 @@ def escalate_reminder(task_id: int):
             # Level 2: Persistent reminder
             message = f"🔔 Reminder ({task.reminder_count}x): {task.title}"
         
-        telegram_service.send_message(task.user, message)
+        # Add buttons for quick action
+        buttons = [
+            {'text': '✅ Complete', 'callback_data': f'complete_{task_id}'},
+            {'text': '💤 Snooze 30min', 'callback_data': f'snooze_{task_id}'}
+        ]
+        
+        telegram_service.send_message(task.user, message, buttons=buttons)
         task.increment_reminder()
         
         # Keep escalating every 10 minutes until acknowledged
@@ -248,12 +254,24 @@ def _format_task_confirmation(task: Task, parsed: dict) -> str:
     return msg
 
 
-def _format_reminder_message(task: Task) -> str:
-    """Format reminder message."""
+def _format_reminder_message(task: Task) -> tuple:
+    """Format reminder message with buttons.
+    
+    Returns:
+        tuple: (message_text, buttons_list)
+    """
     if task.reminder_count == 0:
-        return f"🔔 Reminder: {task.title}"
+        msg = f"🔔 Reminder: {task.title}"
     else:
-        return f"🔔 Reminder ({task.reminder_count + 1}x): {task.title}"
+        msg = f"🔔 Reminder ({task.reminder_count + 1}x): {task.title}"
+    
+    # Add buttons
+    buttons = [
+        {'text': '✅ Complete', 'callback_data': f'complete_{task.id}'},
+        {'text': '💤 Snooze 30min', 'callback_data': f'snooze_{task.id}'}
+    ]
+    
+    return msg, buttons
 
 
 def _find_and_modify_task(user: User, parsed: dict) -> Task:

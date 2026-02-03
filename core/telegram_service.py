@@ -3,9 +3,9 @@ Telegram Bot service for sending/receiving messages.
 """
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, List, Dict
 from django.conf import settings
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class TelegramService:
         
         self.bot = Bot(token=self.token)
     
-    def send_message(self, user, message: str, parse_mode: str = 'Markdown') -> Optional[int]:
+    def send_message(self, user, message: str, parse_mode: str = 'Markdown', buttons: List[Dict[str, str]] = None) -> Optional[int]:
         """
         Send a message to a user via Telegram.
         
@@ -30,6 +30,7 @@ class TelegramService:
             user: Django User object (should have telegram_chat_id attribute or profile)
             message: Message text to send
             parse_mode: Parse mode for formatting (Markdown or HTML)
+            buttons: List of button dicts with 'text' and 'callback_data' keys
         
         Returns:
             Message ID if successful, None otherwise
@@ -41,11 +42,18 @@ class TelegramService:
                 logger.error(f"No Telegram chat ID found for user {user.username}")
                 return None
             
+            # Build inline keyboard if buttons provided
+            reply_markup = None
+            if buttons:
+                keyboard = [[InlineKeyboardButton(btn['text'], callback_data=btn['callback_data'])] for btn in buttons]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            
             # Run async operation in sync context
             result = asyncio.run(self.bot.send_message(
                 chat_id=chat_id,
                 text=message,
-                parse_mode=parse_mode
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
             ))
             return result.message_id
             
