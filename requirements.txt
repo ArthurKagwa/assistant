@@ -4,6 +4,7 @@ djangorestframework>=3.14.0
 
 # Database
 psycopg2-binary>=2.9.9
+pymongo>=4.6.1
 
 # Async Task Queue
 celery>=5.3.4
@@ -15,6 +16,9 @@ python-telegram-bot>=20.7
 
 # AI Integration
 google-generativeai>=0.3.0
+
+# Date/Time parsing
+python-dateutil>=2.8.2
 
 # Environment & Config
 python-dotenv>=1.0.0

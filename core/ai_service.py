@@ -38,10 +38,15 @@ class AIService:
         now = datetime.now(self.timezone)
         context_str = self._build_context_string(user_context) if user_context else ""
         
+        # Include conversation history if available
+        conversation_history = ""
+        if user_context and 'conversation_history' in user_context:
+            conversation_history = f"\n\n{user_context['conversation_history']}\n"
+        
         prompt = f"""You are Kabanda, an AI personal assistant. Analyze this message and extract task information.
 
 Current date/time: {now.strftime('%Y-%m-%d %H:%M %Z')} (East Africa Time)
-{context_str}
+{context_str}{conversation_history}
 
 User message: "{message}"
 
@@ -58,6 +63,7 @@ Extract the following in JSON format:
 }}
 
 Rules:
+- Consider the conversation history when interpreting vague references like "that", "it", "the task"
 - Parse natural time expressions like "in 20 mins", "at 5 PM", "tomorrow", "next Friday"
 - If time is vague ("later", "soon"), set due_datetime to 2 hours from now and set clarification_needed
 - Always output datetime in ISO 8601 format with EAT timezone

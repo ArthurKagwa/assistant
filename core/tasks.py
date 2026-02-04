@@ -29,7 +29,30 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
         ai_service = get_ai_service()
         telegram_service = get_telegram_service()
         
-        # Log incoming message
+        # Get MongoDB service
+        from .mongo_service import get_mongo_service
+        mongo_service = get_mongo_service()
+        
+        # Get chat_id from user context
+        from .models import UserContext
+        chat_id_context = UserContext.objects.filter(
+            user=user,
+            context_type='preference',
+            key='telegram_chat_id',
+            is_active=True
+        ).first()
+        chat_id = int(chat_id_context.value) if chat_id_context else 0
+        
+        # Save incoming message to MongoDB
+        mongo_service.save_message(
+            user_id=user.id,
+            chat_id=chat_id,
+            direction='incoming',
+            message=message,
+            telegram_message_id=telegram_message_id
+        )
+        
+        # Log incoming message (Django model)
         start_time = timezone.now()
         conversation = ConversationLog.objects.create(
             user=user,
@@ -39,10 +62,12 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             telegram_message_id=telegram_message_id
         )
         
-        # Get user context
+        # Get user context and conversation history
         user_context = _get_user_context(user)
+        conversation_context = mongo_service.get_conversation_context(user.id, limit=6)
+        user_context['conversation_history'] = conversation_context
         
-        # Parse message with AI
+        # Parse message with AI (now includes conversation context)
         parsed = ai_service.parse_message(message, user_context)
         
         # Update conversation log with AI response
@@ -90,7 +115,7 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             response = "I'm here to help! Send me tasks like 'Remind me to check the brooder in 20 minutes'"
             telegram_service.send_message(user, response)
         
-        # Log outgoing response
+        # Log outgoing response (Django model)
         ConversationLog.objects.create(
             user=user,
             task=conversation.task,
@@ -98,6 +123,17 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             message_type='text',
             content=response,
             ai_response=response
+        )
+        
+        # Save outgoing message to MongoDB
+        mongo_service.save_message(
+            user_id=user.id,
+            chat_id=chat_id,
+            direction='outgoing',
+            message=response,
+            ai_intent=parsed.get('intent'),
+            ai_response=response,
+            task_id=conversation.task.id if conversation.task else None
         )
         
     except Exception as e:

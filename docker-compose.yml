@@ -11,6 +11,23 @@ services:
       timeout: 3s
       retries: 5
 
+  # MongoDB (Conversation History)
+  mongodb:
+    image: mongo:7
+    container_name: kabanda-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=kabanda
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   # Django Web Application
   web:
     build: .
@@ -25,8 +42,11 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://mongodb:27017/kabanda
     depends_on:
       redis:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     restart: unless-stopped
 
@@ -41,8 +61,11 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://mongodb:27017/kabanda
     depends_on:
       redis:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     restart: unless-stopped
 
@@ -57,8 +80,11 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://mongodb:27017/kabanda
     depends_on:
       redis:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     restart: unless-stopped
 
@@ -79,3 +105,4 @@ services:
 
 volumes:
   static_volume:
+  mongo_data:

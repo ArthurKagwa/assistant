@@ -48,12 +48,15 @@ class TelegramService:
                 keyboard = [[InlineKeyboardButton(btn['text'], callback_data=btn['callback_data'])] for btn in buttons]
                 reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Run async operation in sync context
-            result = asyncio.run(self.bot.send_message(
+            # Run async operation in sync context with proper event loop handling and timeout
+            result = self._run_async(self.bot.send_message(
                 chat_id=chat_id,
                 text=message,
                 parse_mode=parse_mode,
-                reply_markup=reply_markup
+                reply_markup=reply_markup,
+                read_timeout=30,
+                write_timeout=30,
+                connect_timeout=30
             ))
             return result.message_id
             
@@ -63,6 +66,22 @@ class TelegramService:
         except Exception as e:
             logger.error(f"Error sending Telegram message: {e}", exc_info=True)
             return None
+    
+    def _run_async(self, coroutine):
+        """
+        Run async coroutine in sync context with proper event loop handling.
+        Fixes 'Event loop is closed' error in Celery workers.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        return loop.run_until_complete(coroutine)
     
     def _get_user_chat_id(self, user) -> Optional[int]:
         """
@@ -108,7 +127,7 @@ class TelegramService:
             True if successful
         """
         try:
-            result = asyncio.run(self.bot.set_webhook(url=webhook_url))
+            result = self._run_async(self.bot.set_webhook(url=webhook_url))
             logger.info(f"Webhook set to {webhook_url}: {result}")
             return result
         except TelegramError as e:
@@ -123,7 +142,7 @@ class TelegramService:
             True if successful
         """
         try:
-            result = asyncio.run(self.bot.delete_webhook())
+            result = self._run_async(self.bot.delete_webhook())
             logger.info(f"Webhook deleted: {result}")
             return result
         except TelegramError as e:

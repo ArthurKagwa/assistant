@@ -73,7 +73,6 @@ def _handle_callback_query(callback_query: dict) -> HttpResponse:
     """
     from .models import Task
     from .telegram_service import get_telegram_service
-    import asyncio
     
     try:
         callback_data = callback_query.get('data', '')
@@ -107,8 +106,7 @@ def _handle_callback_query(callback_query: dict) -> HttpResponse:
                 
                 # Send acknowledgment
                 telegram_service = get_telegram_service()
-                bot = telegram_service.bot
-                asyncio.run(bot.answer_callback_query(
+                telegram_service._run_async(telegram_service.bot.answer_callback_query(
                     callback_query_id=callback_id,
                     text=response
                 ))
