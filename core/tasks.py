@@ -337,7 +337,13 @@ def _find_and_modify_task(user: User, parsed: dict) -> Task:
     task = _find_recent_task(user)
     
     if task and parsed.get('due_datetime'):
-        task.due_at = parsed['due_datetime']
+        # Parse due_datetime if it's a string
+        from dateutil import parser as date_parser
+        due_datetime = parsed['due_datetime']
+        if isinstance(due_datetime, str):
+            due_datetime = date_parser.parse(due_datetime)
+            
+        task.due_at = due_datetime
         task.save()
         
         # Cancel old reminder and schedule new one
