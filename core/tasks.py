@@ -43,6 +43,11 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
         ).first()
         chat_id = int(chat_id_context.value) if chat_id_context else 0
         
+        # Get user context and conversation history (before saving new message to avoid dup)
+        user_context = _get_user_context(user)
+        conversation_context = mongo_service.get_conversation_context(user.id, limit=6)
+        user_context['conversation_history'] = conversation_context
+
         # Save incoming message to MongoDB
         mongo_service.save_message(
             user_id=user.id,
@@ -51,21 +56,6 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             message=message,
             telegram_message_id=telegram_message_id
         )
-        
-        # Log incoming message (Django model)
-        start_time = timezone.now()
-        conversation = ConversationLog.objects.create(
-            user=user,
-            direction='incoming',
-            message_type='text',
-            content=message,
-            telegram_message_id=telegram_message_id
-        )
-        
-        # Get user context and conversation history
-        user_context = _get_user_context(user)
-        conversation_context = mongo_service.get_conversation_context(user.id, limit=6)
-        user_context['conversation_history'] = conversation_context
         
         # Parse message with AI (now includes conversation context)
         parsed = ai_service.parse_message(message, user_context)
@@ -104,6 +94,17 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             else:
                 response = "I couldn't find a recent task to modify. Could you be more specific?"
             telegram_service.send_message(user, response)
+
+        elif parsed['intent'] == 'delete_task':
+            # Find recent task and cancel it
+            task = _find_recent_task(user)
+            if task:
+                task.status = 'cancelled'
+                task.save()
+                response = f"🗑️ Task cancelled: {task.title}"
+            else:
+                response = "I couldn't find a pending task to cancel."
+            telegram_service.send_message(user, response)
             
         elif parsed['intent'] == 'query_tasks':
             tasks = _get_user_tasks(user, parsed)
@@ -111,8 +112,10 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             telegram_service.send_message(user, response)
             
         else:
-            # General question - just respond
-            response = "I'm here to help! Send me tasks like 'Remind me to check the brooder in 20 minutes'"
+            # General question/conversation
+            response = parsed.get('conversational_response')
+            if not response:
+                response = "I'm listening. You can ask me to remind you of tasks or check your schedule."
             telegram_service.send_message(user, response)
         
         # Log outgoing response (Django model)
@@ -304,19 +307,24 @@ def _format_reminder_message(task: Task) -> tuple:
     # Add buttons
     buttons = [
         {'text': '✅ Complete', 'callback_data': f'complete_{task.id}'},
-        {'text': '💤 Snooze 30min', 'callback_data': f'snooze_{task.id}'}
+        {'text': '💤 Snooze 30min', 'callback_data': f'snooze_{task.id}'},
+        {'text': '🗑️ Delete', 'callback_data': f'delete_{task.id}'}
     ]
     
     return msg, buttons
 
 
-def _find_and_modify_task(user: User, parsed: dict) -> Task:
-    """Find and modify a recent task."""
-    # Get most recent pending task
-    task = Task.objects.filter(
+def _find_recent_task(user: User) -> Task:
+    """Find most recent pending task."""
+    return Task.objects.filter(
         user=user,
         status='pending'
     ).order_by('-created_at').first()
+
+
+def _find_and_modify_task(user: User, parsed: dict) -> Task:
+    """Find and modify a recent task."""
+    task = _find_recent_task(user)
     
     if task and parsed.get('due_datetime'):
         task.due_at = parsed['due_datetime']

@@ -81,6 +81,11 @@ def _handle_callback_query(callback_query: dict) -> HttpResponse:
         
         logger.info(f"Callback received: {callback_data} from chat_id {chat_id}")
         
+        # Get message details for editing
+        message = callback_query.get('message', {})
+        message_id = message.get('message_id')
+        message_chat_id = message.get('chat', {}).get('id')
+
         # Parse callback data (format: action_taskid)
         if '_' in callback_data:
             action, task_id = callback_data.split('_', 1)
@@ -94,18 +99,42 @@ def _handle_callback_query(callback_query: dict) -> HttpResponse:
             # Get task
             try:
                 task = Task.objects.get(id=task_id, user=user)
+                telegram_service = get_telegram_service()
                 
                 if action == 'complete':
                     task.mark_completed()
-                    response = f"✅ Task completed: {task.title}"
+                    response = "Task completed"
+                    # Edit message to show completion
+                    new_text = f"✅ Completed: {task.title}"
+                    if message_id and message_chat_id:
+                        telegram_service._run_async(telegram_service.bot.edit_message_text(
+                            chat_id=message_chat_id,
+                            message_id=message_id,
+                            text=new_text,
+                            reply_markup=None
+                        ))
+                        
+                elif action == 'delete':
+                    task.status = 'cancelled'
+                    task.save()
+                    response = "Task deleted"
+                    # Edit message to show deletion
+                    new_text = f"🗑️ Deleted: {task.title}"
+                    if message_id and message_chat_id:
+                        telegram_service._run_async(telegram_service.bot.edit_message_text(
+                            chat_id=message_chat_id,
+                            message_id=message_id,
+                            text=new_text,
+                            reply_markup=None
+                        ))
+
                 elif action == 'snooze':
                     task.snooze(minutes=30)
                     response = f"💤 Snoozed for 30 minutes: {task.title}"
                 else:
                     response = "Unknown action"
                 
-                # Send acknowledgment
-                telegram_service = get_telegram_service()
+                # Send acknowledgment (toast)
                 telegram_service._run_async(telegram_service.bot.answer_callback_query(
                     callback_query_id=callback_id,
                     text=response

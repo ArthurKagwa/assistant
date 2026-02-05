@@ -43,3 +43,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+
+CALLBACK_GUIDE.md

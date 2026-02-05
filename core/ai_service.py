@@ -52,14 +52,18 @@ User message: "{message}"
 
 Extract the following in JSON format:
 {{
-    "intent": "new_task|modify_task|query_tasks|general_question",
+    "intent": "new_task|modify_task|delete_task|query_tasks|general_question",
     "task_title": "Brief title of the task (max 100 chars)",
     "task_description": "Detailed description if provided",
     "priority": "low|medium|high|urgent",
     "due_datetime": "ISO 8601 datetime string in EAT timezone when task should be reminded",
     "confidence": 0.0-1.0,
     "clarification_needed": "Question to ask user if time/details are unclear",
-    "extracted_time_phrase": "The exact time phrase from user message"
+    "due_datetime": "ISO 8601 datetime string in EAT timezone when task should be reminded",
+    "confidence": 0.0-1.0,
+    "clarification_needed": "Question to ask user if time/details are unclear",
+    "extracted_time_phrase": "The exact time phrase from user message",
+    "conversational_response": "Natural language response to the user's message (if no task, or acknowledging the task)"
 }}
 
 Rules:
@@ -69,7 +73,9 @@ Rules:
 - Always output datetime in ISO 8601 format with EAT timezone
 - For "remind me to X", intent is "new_task"
 - For "move that to...", "change...", "update...", intent is "modify_task"
+- For "delete...", "cancel...", "remove...", "forget...", intent is "delete_task"
 - For "what do I have...", "list my tasks", intent is "query_tasks"
+- For general greetings or questions ("hi", "who are you"), intent is "general_question" and provide a clever/helpful conversational_response
 - Set priority based on urgency indicators (ASAP, urgent, important, etc.)
 
 Return ONLY valid JSON, no markdown or explanations."""
@@ -178,7 +184,10 @@ Return ONLY valid JSON, no markdown or explanations."""
             'due_datetime': due_time.isoformat(),
             'confidence': 0.5,
             'clarification_needed': 'Could you specify when you want to be reminded?',
-            'extracted_time_phrase': ''
+            'confidence': 0.5,
+            'clarification_needed': 'Could you specify when you want to be reminded?',
+            'extracted_time_phrase': '',
+            'conversational_response': "I'm not quite sure what you mean. Could you rephrase that as a task?"
         }
 
 
