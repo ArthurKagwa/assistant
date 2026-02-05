@@ -69,6 +69,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Periodic System Cleanup
+  system-prune:
+    image: docker:cli
+    container_name: kabanda-cleanup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Run every day at 3am (sleep loop)
+    # Prune build cache, dangling images, and stopped containers.
+    # CAUTION: 'docker system prune -f' removes stopped containers. 
+    # MongoDB is safe because it uses a volume and (hopefully) stays running.
+    command: >
+      sh -c "while true; do 
+        echo 'Pruning system...'; 
+        docker system prune -af --filter 'until=24h'; 
+        sleep 86400; 
+      done"
+    restart: unless-stopped
+
   # Celery Beat (Scheduler)
   celery-beat:
     build: .
