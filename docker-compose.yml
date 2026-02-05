@@ -7,14 +7,17 @@ services:
       - "6379:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
 
   # MongoDB (Conversation History)
   mongodb:
     image: mongo:7
     container_name: kabanda-mongo
+    command: mongod --quiet
     ports:
       - "27017:27017"
     environment:
@@ -22,10 +25,11 @@ services:
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')" ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # Django Web Application
