@@ -26,6 +26,20 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
     """
     try:
         user = User.objects.get(id=user_id)
+        
+        # IDEMPOTENCY CHECK: Skip if this message was already processed
+        # This is a second layer of defense in case webhook idempotency fails
+        if telegram_message_id:
+            existing_log = ConversationLog.objects.filter(
+                user=user,
+                telegram_message_id=telegram_message_id,
+                direction='incoming'
+            ).first()
+            
+            if existing_log:
+                logger.warning(f"Task already processed for telegram_message_id {telegram_message_id}. Skipping.")
+                return
+        
         ai_service = get_ai_service()
         telegram_service = get_telegram_service()
         

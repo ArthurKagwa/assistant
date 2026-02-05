@@ -7,6 +7,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.contrib.auth.models import User
+from django.core.cache import cache
 
 from .tasks import parse_user_message
 from .models import UserContext
@@ -44,6 +45,16 @@ def telegram_webhook(request):
         if not chat_id or not text:
             return HttpResponse(status=200)
         
+        # IDEMPOTENCY CHECK: Prevent duplicate processing
+        # Use message_id as idempotency key with 1-hour TTL
+        idempotency_key = f"telegram_msg_{chat_id}_{message_id}"
+        if cache.get(idempotency_key):
+            logger.warning(f"Duplicate webhook call detected for message {message_id} from chat {chat_id}. Skipping.")
+            return HttpResponse(status=200)
+        
+        # Mark this message as processed (1-hour TTL)
+        cache.set(idempotency_key, True, timeout=3600)
+        
         # Find or create user based on chat_id
         user = _get_or_create_user_from_chat_id(chat_id)
         if not user:
@@ -57,6 +68,7 @@ def telegram_webhook(request):
             telegram_message_id=message_id
         )
         
+        # Return immediately to prevent Telegram retries
         return HttpResponse(status=200)
         
     except json.JSONDecodeError as e:
@@ -65,6 +77,7 @@ def telegram_webhook(request):
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
         return HttpResponse(status=500)
+
 
 
 def _handle_callback_query(callback_query: dict) -> HttpResponse:
