@@ -43,6 +43,16 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
         ).first()
         chat_id = int(chat_id_context.value) if chat_id_context else 0
         
+        # Log incoming message (Django model) & start timer
+        start_time = timezone.now()
+        conversation = ConversationLog.objects.create(
+            user=user,
+            direction='incoming',
+            message_type='text',
+            content=message,
+            telegram_message_id=telegram_message_id
+        )
+
         # Get user context and conversation history (before saving new message to avoid dup)
         user_context = _get_user_context(user)
         conversation_context = mongo_service.get_conversation_context(user.id, limit=6)
