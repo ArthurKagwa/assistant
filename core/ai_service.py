@@ -64,6 +64,7 @@ Extract the following in JSON format:
             "location_type": "restaurant|cafe|bar|gym|etc"
         }}
     ],
+    "query_type": "today|afternoon|evening|morning|week|upcoming|all",
     "confidence": 0.0-1.0,
     "clarification_needed": "Question to ask user if time/details are unclear",
     "conversational_response": "Natural language response to the user's message",
@@ -96,6 +97,14 @@ Rules:
 - For "move that to...", "change...", "update...", intent is "modify_task"
 - For "delete...", "cancel...", "remove...", "forget...", intent is "delete_task"
 - For "what do I have...", "list my tasks", intent is "query_tasks"
+  * Set query_type based on user's question:
+    - "this afternoon" → query_type="afternoon"
+    - "this evening" / "tonight" → query_type="evening"
+    - "this morning" → query_type="morning"
+    - "this week" → query_type="week"
+    - "upcoming" / "next few days" → query_type="upcoming"
+    - "all tasks" / "everything" → query_type="all"
+    - default / "today" → query_type="today"
 - For general greetings or questions ("hi", "who are you"), intent is "general_question" and provide a clever/helpful conversational_response
 - Set priority based on urgency indicators (ASAP, urgent, important, etc.)
 - If user needs to provide location for location-based task, set intent to "location_query_needed"

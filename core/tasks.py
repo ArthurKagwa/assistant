@@ -547,18 +547,45 @@ def _find_and_modify_task(user: User, parsed: dict) -> Task:
 
 def _get_user_tasks(user: User, parsed: dict) -> list:
     """Get user's tasks based on query."""
-    # For now, get today's pending tasks
-    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = today_start + timedelta(days=1)
     
-    tasks = Task.objects.filter(
-        user=user,
-        status='pending',
-        due_at__gte=today_start,
-        due_at__lt=today_end
-    ).order_by('due_at')
+    # Get query timeframe from parsed data (default to today)
+    query_type = parsed.get('query_type', 'today')
     
-    return list(tasks)
+    # Base queryset - always filter by user and pending status
+    queryset = Task.objects.filter(user=user, status='pending')
+    
+    # Apply time-based filters based on query type
+    if query_type == 'afternoon':
+        # Afternoon: 12 PM to 6 PM (exclusive end)
+        afternoon_start = today_start.replace(hour=12)
+        afternoon_end = today_start.replace(hour=18)
+        queryset = queryset.filter(due_at__gte=afternoon_start, due_at__lt=afternoon_end)
+    elif query_type == 'evening':
+        # Evening: 6 PM onwards (until midnight)
+        evening_start = today_start.replace(hour=18)
+        queryset = queryset.filter(due_at__gte=evening_start, due_at__lt=today_end)
+    elif query_type == 'morning':
+        # Morning: midnight to 12 PM
+        queryset = queryset.filter(due_at__gte=today_start, due_at__lt=today_start.replace(hour=12))
+    elif query_type == 'week':
+        # This week
+        week_end = today_start + timedelta(days=7)
+        queryset = queryset.filter(due_at__gte=today_start, due_at__lt=week_end)
+    elif query_type == 'upcoming':
+        # All upcoming tasks (next 30 days)
+        upcoming_end = today_start + timedelta(days=30)
+        queryset = queryset.filter(due_at__gte=now, due_at__lt=upcoming_end)
+    elif query_type == 'all':
+        # All pending tasks
+        queryset = queryset.filter(due_at__gte=now)
+    else:
+        # Default: today's tasks
+        queryset = queryset.filter(due_at__gte=today_start, due_at__lt=today_end)
+    
+    return list(queryset.order_by('due_at'))
 
 
 def _format_tasks_list(tasks: list) -> str:
