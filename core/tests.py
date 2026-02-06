@@ -245,3 +245,169 @@ class TestLocationBasedTaskTitles(TestCase):
         # called for non-location tasks
         mock_places_instance.geocode_location.assert_called_once()
         mock_places_instance.get_top_recommendations.assert_not_called()
+
+
+class TestLocationMapsAndWidgets(TestCase):
+    """Test maps link generation and location widget functionality."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        
+        # Create user context with telegram chat_id
+        UserContext.objects.create(
+            user=self.user,
+            context_type='preference',
+            key='telegram_chat_id',
+            value='12345'
+        )
+    
+    def test_generate_google_maps_link_with_place_name(self):
+        """Test Google Maps link generation with place name."""
+        from core.tasks import generate_google_maps_link
+        
+        link = generate_google_maps_link(
+            latitude=0.1,
+            longitude=30.5,
+            place_name='The Green Valley Eatery'
+        )
+        
+        # Should contain encoded place name and coordinates
+        self.assertIn('maps/search', link)
+        # URL encoding uses %20 for spaces, not +
+        self.assertIn('The%20Green%20Valley%20Eatery', link)
+        self.assertIn('0.1,30.5', link)
+    
+    def test_generate_google_maps_link_without_place_name(self):
+        """Test Google Maps link generation with coordinates only."""
+        from core.tasks import generate_google_maps_link
+        
+        link = generate_google_maps_link(
+            latitude=0.1,
+            longitude=30.5
+        )
+        
+        # Should be a direct coordinate link
+        self.assertIn('maps?q=', link)
+        self.assertIn('0.1,30.5', link)
+    
+    @patch('core.telegram_service.TelegramService.__init__', return_value=None)
+    @patch('core.telegram_service.TelegramService._run_async')
+    def test_send_location_widget_as_venue(self, mock_run_async, mock_init):
+        """Test sending location widget as venue (with title and address)."""
+        from core.telegram_service import TelegramService
+        
+        # Mock the async result
+        mock_message = MagicMock()
+        mock_message.message_id = 999
+        mock_run_async.return_value = mock_message
+        
+        # Create telegram service instance directly
+        telegram_service = TelegramService()
+        telegram_service.bot = MagicMock()
+        
+        message_id = telegram_service.send_location(
+            self.user,
+            latitude=0.1,
+            longitude=30.5,
+            title='The Green Valley Eatery',
+            address='Kahunge, Kamwenge'
+        )
+        
+        # Verify message was sent
+        self.assertEqual(message_id, 999)
+        mock_run_async.assert_called_once()
+    
+    @patch('core.telegram_service.TelegramService.__init__', return_value=None)
+    @patch('core.telegram_service.TelegramService._run_async')
+    def test_send_location_widget_simple(self, mock_run_async, mock_init):
+        """Test sending simple location widget without venue details."""
+        from core.telegram_service import TelegramService
+        
+        # Mock the async result
+        mock_message = MagicMock()
+        mock_message.message_id = 888
+        mock_run_async.return_value = mock_message
+        
+        # Create telegram service instance directly
+        telegram_service = TelegramService()
+        telegram_service.bot = MagicMock()
+        
+        message_id = telegram_service.send_location(
+            self.user,
+            latitude=0.1,
+            longitude=30.5
+        )
+        
+        # Verify message was sent
+        self.assertEqual(message_id, 888)
+        mock_run_async.assert_called_once()
+    
+    def test_format_confirmation_includes_maps_link(self):
+        """Test that task confirmation includes maps link for location tasks."""
+        from core.tasks import _format_multiple_tasks_confirmation
+        from datetime import datetime
+        import pytz
+        
+        # Create a task with location data
+        task = Task.objects.create(
+            user=self.user,
+            title='Dinner at The Green Valley Eatery',
+            description='Great restaurant',
+            priority='medium',
+            due_at=datetime(2026, 2, 6, 19, 0, 0, tzinfo=pytz.timezone('Africa/Nairobi')),
+            location_name='The Green Valley Eatery',
+            location_address='Kahunge, Kamwenge',
+            location_data={
+                'name': 'The Green Valley Eatery',
+                'address': 'Kahunge, Kamwenge',
+                'location': {'lat': 0.1, 'lng': 30.5},
+                'rating': 4.5
+            }
+        )
+        
+        parsed = {
+            'conversational_response': 'Enjoy your dinner!'
+        }
+        
+        # Format confirmation
+        confirmation = _format_multiple_tasks_confirmation([task], parsed)
+        
+        # Should include maps link
+        self.assertIn('View on Maps', confirmation)
+        self.assertIn('maps', confirmation.lower())
+        self.assertIn('The Green Valley Eatery', confirmation)
+    
+    def test_format_reminder_includes_maps_link(self):
+        """Test that reminder message includes maps link for location tasks."""
+        from core.tasks import _format_reminder_message
+        from datetime import datetime
+        import pytz
+        
+        # Create a task with location data
+        task = Task.objects.create(
+            user=self.user,
+            title='Dinner at The Green Valley Eatery',
+            description='Great restaurant',
+            priority='medium',
+            due_at=datetime(2026, 2, 6, 19, 0, 0, tzinfo=pytz.timezone('Africa/Nairobi')),
+            location_name='The Green Valley Eatery',
+            location_address='Kahunge, Kamwenge',
+            location_data={
+                'name': 'The Green Valley Eatery',
+                'address': 'Kahunge, Kamwenge',
+                'location': {'lat': 0.1, 'lng': 30.5},
+                'rating': 4.5
+            }
+        )
+        
+        # Format reminder
+        message, buttons = _format_reminder_message(task)
+        
+        # Should include location info and maps link
+        self.assertIn('The Green Valley Eatery', message)
+        self.assertIn('View on Maps', message)
+        self.assertIn('maps', message.lower())
+        
+        # Should have buttons
+        self.assertEqual(len(buttons), 3)
