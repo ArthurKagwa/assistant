@@ -162,3 +162,5 @@ USER_PHONE_NUMBER = os.getenv('USER_PHONE_NUMBER', '')
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 
+# Google Places API Configuration
+GOOGLE_NEW_PLACES_API = os.getenv('GOOGLE_NEW_PLACES_API', '')

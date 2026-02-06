@@ -74,6 +74,14 @@ class Task(models.Model):
     source_message = models.TextField(help_text="Original user message that created this task")
     telegram_message_id = models.BigIntegerField(null=True, blank=True)
     
+    # Location data (for location-based tasks)
+    location_name = models.CharField(max_length=255, blank=True, help_text="Name of the place (e.g., 'Café Javas')")
+    location_address = models.TextField(blank=True, help_text="Address of the location")
+    location_data = models.JSONField(null=True, blank=True, help_text="Rich place details from Places API")
+    
+    # Batch tracking (for tasks created together in one message)
+    batch_id = models.UUIDField(null=True, blank=True, help_text="Groups tasks created together")
+    
     # Escalation tracking
     reminder_count = models.IntegerField(default=0, help_text="Number of times user has been reminded")
     last_reminded_at = models.DateTimeField(null=True, blank=True)

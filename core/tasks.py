@@ -92,6 +92,7 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
         
         # Handle based on intent
         if parsed['intent'] == 'new_task':
+            # Single task (legacy/backward compatibility)
             task = _create_task(user, parsed, message, telegram_message_id)
             conversation.task = task
             conversation.save()
@@ -105,6 +106,94 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
             # Send confirmation to user
             response = _format_task_confirmation(task, parsed)
             telegram_service.send_message(user, response)
+        
+        elif parsed['intent'] == 'new_tasks':
+            # Multiple tasks from one message
+            tasks_data = parsed.get('tasks', [])
+            
+            # Check if we need location input first
+            if parsed.get('needs_location_input'):
+                response = parsed.get('location_prompt', 'Where are you right now?')
+                # Store pending tasks in user context for next message
+                from .models import UserContext
+                import json
+                UserContext.objects.update_or_create(
+                    user=user,
+                    context_type='preference',
+                    key='pending_location_tasks',
+                    defaults={
+                        'value': json.dumps({
+                            'tasks': tasks_data,
+                            'original_message': message
+                        }),
+                        'is_active': True
+                    }
+                )
+                telegram_service.send_message(user, response)
+            else:
+                # Resolve location-based tasks if any
+                tasks_data = _resolve_location_tasks(user, tasks_data)
+                
+                # Create all tasks
+                created_tasks = _create_multiple_tasks(user, tasks_data, message, telegram_message_id)
+                
+                # Update conversation with first task
+                if created_tasks:
+                    conversation.task = created_tasks[0]
+                    conversation.save()
+                
+                # Schedule all reminders
+                for task in created_tasks:
+                    schedule_reminder.apply_async(
+                        args=[task.id],
+                        eta=task.due_at
+                    )
+                
+                # Send comprehensive confirmation
+                response = _format_multiple_tasks_confirmation(created_tasks, parsed)
+                telegram_service.send_message(user, response)
+        
+        elif parsed['intent'] == 'location_query_needed':
+            # User is providing location for pending tasks
+            from .models import UserContext
+            import json
+            
+            pending_context = UserContext.objects.filter(
+                user=user,
+                context_type='preference',
+                key='pending_location_tasks',
+                is_active=True
+            ).first()
+            
+            if pending_context:
+                pending_data = json.loads(pending_context.value)
+                tasks_data = pending_data.get('tasks', [])
+                
+                # Use the current message as location
+                tasks_data = _resolve_location_tasks(user, tasks_data, location_str=message)
+                
+                # Create tasks
+                created_tasks = _create_multiple_tasks(
+                    user, 
+                    tasks_data, 
+                    pending_data.get('original_message', message), 
+                    telegram_message_id
+                )
+                
+                # Schedule reminders
+                for task in created_tasks:
+                    schedule_reminder.apply_async(args=[task.id], eta=task.due_at)
+                
+                # Clear pending context
+                pending_context.is_active = False
+                pending_context.save()
+                
+                # Send confirmation
+                response = _format_multiple_tasks_confirmation(created_tasks, parsed)
+                telegram_service.send_message(user, response)
+            else:
+                response = \"I'm not sure what location you're referring to. Could you rephrase that?\"
+                telegram_service.send_message(user, response)
             
         elif parsed['intent'] == 'modify_task':
             # Find recent task and modify it
