@@ -207,12 +207,19 @@ class TestLocationBasedTaskTitles(TestCase):
     
     @patch('core.places_service.get_places_service')
     def test_non_location_task_title_unchanged(self, mock_places_service):
-        """Test that non-location tasks keep their original title."""
+        """Test that non-location tasks keep their original title.
+        
+        Note: geocode_location is still called to geocode the location_str
+        (for efficiency, it's geocoded once for all tasks), but the
+        coordinates are not used for tasks with requires_location=False.
+        """
         from core.tasks import _resolve_location_tasks
         
-        # Mock places service (shouldn't be called for non-location tasks)
+        # Mock places service
         mock_places_instance = MagicMock()
-        mock_places_instance.geocode_location.return_value = None  # Return None instead of empty tuple
+        # Return None to simulate geocoding failure (or could return coords, 
+        # but they won't be used for non-location tasks anyway)
+        mock_places_instance.geocode_location.return_value = None
         mock_places_service.return_value = mock_places_instance
         
         # Test data without location requirement
@@ -234,6 +241,7 @@ class TestLocationBasedTaskTitles(TestCase):
         # Verify the task title was NOT modified
         self.assertEqual(len(resolved_tasks), 1)
         self.assertEqual(resolved_tasks[0]['task_title'], 'Meeting with Tom')
-        # Places service geocode should be called but recommendations should not
+        # Geocode is called once for the batch, but recommendations are not 
+        # called for non-location tasks
         mock_places_instance.geocode_location.assert_called_once()
         mock_places_instance.get_top_recommendations.assert_not_called()
