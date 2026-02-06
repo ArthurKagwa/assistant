@@ -155,3 +155,85 @@ class TestTaskIdempotency(TestCase):
             direction='incoming'
         )
         self.assertEqual(incoming_logs.count(), 1)
+
+
+class TestLocationBasedTaskTitles(TestCase):
+    """Test that location-based tasks get proper titles with place names."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+    
+    @patch('core.places_service.get_places_service')
+    def test_location_task_title_includes_place_name(self, mock_places_service):
+        """Test that location-based tasks include the place name in the title."""
+        from core.tasks import _resolve_location_tasks
+        
+        # Mock places service
+        mock_places_instance = MagicMock()
+        mock_places_instance.geocode_location.return_value = (0.1, 30.5)
+        mock_places_instance.get_top_recommendations.return_value = [{
+            'name': 'The Green Valley Eatery',
+            'address': 'Kahunge, Kamwenge',
+            'rating': 4.5,
+            'total_ratings': 100
+        }]
+        mock_places_instance.format_place_for_task.return_value = 'The Green Valley Eatery ⭐⭐⭐⭐ (4.5) - Kahunge, Kamwenge'
+        mock_places_service.return_value = mock_places_instance
+        
+        # Test data with location-based task
+        tasks_data = [{
+            'task_title': 'Dinner',
+            'task_description': '',
+            'priority': 'medium',
+            'due_datetime': '2026-02-06T19:00:00+03:00',
+            'requires_location': True,
+            'location_query': 'nice restaurant',
+            'location_type': 'restaurant'
+        }]
+        
+        # Resolve tasks with location
+        resolved_tasks = _resolve_location_tasks(
+            self.user,
+            tasks_data,
+            location_str='Kahunge, Kamwenge'
+        )
+        
+        # Verify the task title was updated to include place name
+        self.assertEqual(len(resolved_tasks), 1)
+        self.assertEqual(resolved_tasks[0]['task_title'], 'Dinner at The Green Valley Eatery')
+        self.assertEqual(resolved_tasks[0]['location_name'], 'The Green Valley Eatery')
+        self.assertIn('Recommended:', resolved_tasks[0]['task_description'])
+    
+    @patch('core.places_service.get_places_service')
+    def test_non_location_task_title_unchanged(self, mock_places_service):
+        """Test that non-location tasks keep their original title."""
+        from core.tasks import _resolve_location_tasks
+        
+        # Mock places service (shouldn't be called for non-location tasks)
+        mock_places_instance = MagicMock()
+        mock_places_instance.geocode_location.return_value = None  # Return None instead of empty tuple
+        mock_places_service.return_value = mock_places_instance
+        
+        # Test data without location requirement
+        tasks_data = [{
+            'task_title': 'Meeting with Tom',
+            'task_description': '',
+            'priority': 'medium',
+            'due_datetime': '2026-02-06T14:00:00+03:00',
+            'requires_location': False
+        }]
+        
+        # Resolve tasks (should not modify title)
+        resolved_tasks = _resolve_location_tasks(
+            self.user,
+            tasks_data,
+            location_str='Kahunge, Kamwenge'
+        )
+        
+        # Verify the task title was NOT modified
+        self.assertEqual(len(resolved_tasks), 1)
+        self.assertEqual(resolved_tasks[0]['task_title'], 'Meeting with Tom')
+        # Places service geocode should be called but recommendations should not
+        mock_places_instance.geocode_location.assert_called_once()
+        mock_places_instance.get_top_recommendations.assert_not_called()
