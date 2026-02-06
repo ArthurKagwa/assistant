@@ -18,9 +18,7 @@ python-telegram-bot>=20.7
 google-generativeai>=0.3.0
 
 # Location Services (Google Places API)
-googlemaps>=4.10.0
-
-# Date/Time parsing
+# Using direct requests for Places API v1
 python-dateutil>=2.8.2
 
 # Environment & Config

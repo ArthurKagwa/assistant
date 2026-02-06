@@ -192,7 +192,7 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
                 response = _format_multiple_tasks_confirmation(created_tasks, parsed)
                 telegram_service.send_message(user, response)
             else:
-                response = \"I'm not sure what location you're referring to. Could you rephrase that?\"
+                response = "I'm not sure what location you're referring to. Could you rephrase that?"
                 telegram_service.send_message(user, response)
             
         elif parsed['intent'] == 'modify_task':
@@ -370,20 +370,110 @@ def _create_task(user: User, parsed: dict, original_message: str, telegram_msg_i
     from dateutil import parser as date_parser
     
     # Parse due_datetime if it's a string
-    due_datetime = parsed['due_datetime']
+    due_datetime = parsed.get('due_datetime')
     if isinstance(due_datetime, str):
         due_datetime = date_parser.parse(due_datetime)
     
     task = Task.objects.create(
         user=user,
-        title=parsed['task_title'],
+        title=parsed.get('task_title', 'New Task'),
         description=parsed.get('task_description', ''),
         priority=parsed.get('priority', 'medium'),
         due_at=due_datetime,
         source_message=original_message,
-        telegram_message_id=telegram_msg_id
+        telegram_message_id=telegram_msg_id,
+        location_name=parsed.get('location_name', ''),
+        location_address=parsed.get('location_address', ''),
+        location_data=parsed.get('location_data')
     )
     return task
+
+
+def _create_multiple_tasks(user: User, tasks_data: list, original_message: str, telegram_msg_id: int = None) -> list:
+    """Create multiple tasks from parsed data array."""
+    from .models import Task
+    import uuid
+    from dateutil import parser as date_parser
+    
+    batch_id = uuid.uuid4()
+    created_tasks = []
+    
+    for task_data in tasks_data:
+        due_at = task_data.get('due_datetime')
+        if isinstance(due_at, str):
+            due_at = date_parser.parse(due_at)
+            
+        task = Task.objects.create(
+            user=user,
+            title=task_data.get('task_title', 'New Task'),
+            description=task_data.get('task_description', ''),
+            priority=task_data.get('priority', 'medium'),
+            due_at=due_at,
+            source_message=original_message,
+            telegram_message_id=telegram_msg_id,
+            batch_id=batch_id,
+            location_name=task_data.get('location_name', ''),
+            location_address=task_data.get('location_address', ''),
+            location_data=task_data.get('location_data')
+        )
+        created_tasks.append(task)
+    
+    return created_tasks
+
+
+def _resolve_location_tasks(user: User, tasks_data: list, location_str: str = None) -> list:
+    """Resolve location-based tasks using Places service."""
+    from .places_service import get_places_service
+    places_service = get_places_service()
+    
+    resolved_tasks = []
+    lat, lng = None, None
+    
+    if location_str:
+        coords = places_service.geocode_location(location_str)
+        if coords:
+            lat, lng = coords
+            
+    for task_data in tasks_data:
+        if task_data.get('requires_location') and lat and lng:
+            query = task_data.get('location_query', 'cool restaurant')
+            recommendations = places_service.get_top_recommendations(query, lat, lng, limit=1)
+            
+            if recommendations:
+                place = recommendations[0]
+                task_data['location_name'] = place['name']
+                task_data['location_address'] = place['address']
+                task_data['location_data'] = place
+                task_data['task_title'] = f"{task_data['task_title']} at {place['name']}"
+                task_data['task_description'] = f"Recommended: {places_service.format_place_for_task(place)}"
+        
+        resolved_tasks.append(task_data)
+        
+    return resolved_tasks
+
+
+def _format_multiple_tasks_confirmation(tasks: list, parsed: dict) -> str:
+    """Format confirmation message for multiple tasks."""
+    from django.conf import settings
+    import pytz
+    
+    tz = pytz.timezone(settings.TIME_ZONE)
+    
+    msg = f"✅ I've scheduled {len(tasks)} tasks for you:\n\n"
+    
+    for i, task in enumerate(tasks, 1):
+        local_time = task.due_at.astimezone(tz)
+        msg += f"{i}. **{task.title}**\n"
+        msg += f"   ⏰ Reminder: {local_time.strftime('%I:%M %p on %b %d')}\n"
+        if task.location_name:
+            msg += f"   📍 Location: {task.location_name}\n"
+        msg += "\n"
+        
+    if parsed.get('clarification_needed'):
+        msg += f"❓ {parsed['clarification_needed']}\n\n"
+        
+    msg += parsed.get('conversational_response', "Let me know if you need anything else!")
+    return msg
 
 
 def _format_task_confirmation(task: Task, parsed: dict) -> str:
