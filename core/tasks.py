@@ -29,8 +29,8 @@ def generate_google_maps_link(latitude: float, longitude: float, place_name: str
     """
     if place_name:
         # Search for the place name at the coordinates
-        query = quote(place_name)
-        return f"https://www.google.com/maps/search/?api=1&query={query}&query_place_id={latitude},{longitude}"
+        query = quote(f"{place_name} {latitude},{longitude}")
+        return f"https://www.google.com/maps/search/?api=1&query={query}"
     else:
         # Direct coordinate link
         return f"https://www.google.com/maps?q={latitude},{longitude}"

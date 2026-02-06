@@ -272,11 +272,12 @@ class TestLocationMapsAndWidgets(TestCase):
             place_name='The Green Valley Eatery'
         )
         
-        # Should contain encoded place name and coordinates
+        # Should contain encoded place name and coordinates together in query
         self.assertIn('maps/search', link)
-        # URL encoding uses %20 for spaces, not +
+        # Should have place name and coordinates in the search query
         self.assertIn('The%20Green%20Valley%20Eatery', link)
-        self.assertIn('0.1,30.5', link)
+        self.assertIn('0.1', link)
+        self.assertIn('30.5', link)
     
     def test_generate_google_maps_link_without_place_name(self):
         """Test Google Maps link generation with coordinates only."""
