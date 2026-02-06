@@ -55,7 +55,7 @@ Extract the following in JSON format:
     "intent": "new_task|new_tasks|modify_task|delete_task|query_tasks|general_question|location_query_needed",
     "tasks": [
         {{
-            "task_title": "Brief title of the task (max 100 chars)",
+            "task_title": "Brief title of the task (max 100 chars). For location-based tasks, use simple action-oriented titles like 'Dinner', 'Lunch', 'Coffee meeting' without 'find' or 'search'.",
             "task_description": "Detailed description if provided",
             "priority": "low|medium|high|urgent",
             "due_datetime": "ISO 8601 datetime string in EAT timezone when task should be reminded",
@@ -89,6 +89,9 @@ Rules:
 - If user requests location-based task ("find a cool place", "nearby restaurant", "good bar"), set requires_location=true
 - Set needs_location_input=true and provide location_prompt like "Where are you right now?" or "What area should I search in?"
 - Make Kabanda "the plug for cool hangouts" - prioritize trendy, highly-rated places
+- For location-based tasks, use simple action-oriented task_title like "Dinner", "Lunch", "Coffee" (NOT "Find place to eat" or "Search for restaurant")
+  * Example: User says "find a place for dinner at 7" → task_title should be "Dinner" (NOT "Find place to eat for dinner")
+  * The actual place name will be appended automatically when location is resolved
 
 - If time is vague ("later", "soon"), set due_datetime to 2 hours from now and set clarification_needed
 - Always output datetime in ISO 8601 format with EAT timezone (+03:00)
