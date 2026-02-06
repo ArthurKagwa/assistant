@@ -6,12 +6,34 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from datetime import datetime, timedelta
 import logging
+from urllib.parse import quote
 
 from .models import Task, Reminder, ConversationLog
 from .ai_service import get_ai_service
 from .telegram_service import get_telegram_service
 
 logger = logging.getLogger(__name__)
+
+
+def generate_google_maps_link(latitude: float, longitude: float, place_name: str = None) -> str:
+    """
+    Generate a Google Maps link for a location.
+    
+    Args:
+        latitude: Location latitude
+        longitude: Location longitude
+        place_name: Optional place name for better link
+    
+    Returns:
+        Google Maps URL
+    """
+    if place_name:
+        # Search for the place name at the coordinates
+        query = quote(place_name)
+        return f"https://www.google.com/maps/search/?api=1&query={query}&query_place_id={latitude},{longitude}"
+    else:
+        # Direct coordinate link
+        return f"https://www.google.com/maps?q={latitude},{longitude}"
 
 
 @shared_task(bind=True, max_retries=3)
@@ -152,6 +174,9 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
                 # Send comprehensive confirmation
                 response = _format_multiple_tasks_confirmation(created_tasks, parsed)
                 telegram_service.send_message(user, response)
+                
+                # Send location widgets for location-based tasks
+                _send_location_widgets(user, created_tasks, telegram_service)
         
         elif parsed['intent'] == 'location_query_needed':
             # User is providing location for pending tasks
@@ -191,6 +216,9 @@ def parse_user_message(self, user_id: int, message: str, telegram_message_id: in
                 # Send confirmation
                 response = _format_multiple_tasks_confirmation(created_tasks, parsed)
                 telegram_service.send_message(user, response)
+                
+                # Send location widgets for location-based tasks
+                _send_location_widgets(user, created_tasks, telegram_service)
             else:
                 response = "I'm not sure what location you're referring to. Could you rephrase that?"
                 telegram_service.send_message(user, response)
@@ -295,6 +323,19 @@ def schedule_reminder(self, task_id: int):
         # Send reminder with buttons
         telegram_service.send_message(task.user, message, buttons=buttons)
         reminder.mark_sent()
+        
+        # Send location widget if this is a location-based task
+        if task.location_name and task.location_data and 'location' in task.location_data:
+            lat = task.location_data['location'].get('lat')
+            lng = task.location_data['location'].get('lng')
+            if lat and lng:
+                telegram_service.send_location(
+                    task.user, 
+                    lat, 
+                    lng, 
+                    title=task.location_name,
+                    address=task.location_address
+                )
         
         # Update task
         task.increment_reminder()
@@ -467,6 +508,13 @@ def _format_multiple_tasks_confirmation(tasks: list, parsed: dict) -> str:
         msg += f"   ⏰ Reminder: {local_time.strftime('%I:%M %p on %b %d')}\n"
         if task.location_name:
             msg += f"   📍 Location: {task.location_name}\n"
+            # Add Google Maps link if we have coordinates
+            if task.location_data and 'location' in task.location_data:
+                lat = task.location_data['location'].get('lat')
+                lng = task.location_data['location'].get('lng')
+                if lat and lng:
+                    maps_link = generate_google_maps_link(lat, lng, task.location_name)
+                    msg += f"   🗺️ [View on Maps]({maps_link})\n"
         msg += "\n"
         
     if parsed.get('clarification_needed'):
@@ -506,6 +554,20 @@ def _format_reminder_message(task: Task) -> tuple:
         msg = f"🔔 Reminder: {task.title}"
     else:
         msg = f"🔔 Reminder ({task.reminder_count + 1}x): {task.title}"
+    
+    # Add location info if available
+    if task.location_name:
+        msg += f"\n📍 {task.location_name}"
+        if task.location_address:
+            msg += f"\n{task.location_address}"
+        
+        # Add maps link if we have coordinates
+        if task.location_data and 'location' in task.location_data:
+            lat = task.location_data['location'].get('lat')
+            lng = task.location_data['location'].get('lng')
+            if lat and lng:
+                maps_link = generate_google_maps_link(lat, lng, task.location_name)
+                msg += f"\n🗺️ [View on Maps]({maps_link})"
     
     # Add buttons
     buttons = [
@@ -608,3 +670,26 @@ def _format_tasks_list(tasks: list) -> str:
         msg += f"   📊 {task.priority.title()}\n\n"
     
     return msg
+
+
+def _send_location_widgets(user: User, tasks: list, telegram_service) -> None:
+    """
+    Send location widgets for tasks that have location data.
+    
+    Args:
+        user: User to send to
+        tasks: List of Task objects
+        telegram_service: TelegramService instance
+    """
+    for task in tasks:
+        if task.location_name and task.location_data and 'location' in task.location_data:
+            lat = task.location_data['location'].get('lat')
+            lng = task.location_data['location'].get('lng')
+            if lat and lng:
+                telegram_service.send_location(
+                    user,
+                    lat,
+                    lng,
+                    title=task.location_name,
+                    address=task.location_address
+                )

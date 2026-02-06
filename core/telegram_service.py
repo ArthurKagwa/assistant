@@ -7,6 +7,7 @@ from typing import Optional, List, Dict
 from django.conf import settings
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,58 @@ class TelegramService:
             return None
         except Exception as e:
             logger.error(f"Error sending Telegram message: {e}", exc_info=True)
+            return None
+    
+    def send_location(self, user, latitude: float, longitude: float, title: str = None, address: str = None) -> Optional[int]:
+        """
+        Send a location/venue message to a user via Telegram.
+        
+        Args:
+            user: Django User object
+            latitude: Location latitude
+            longitude: Location longitude
+            title: Optional venue name/title
+            address: Optional venue address
+        
+        Returns:
+            Message ID if successful, None otherwise
+        """
+        try:
+            chat_id = self._get_user_chat_id(user)
+            if not chat_id:
+                logger.error(f"No Telegram chat ID found for user {user.username}")
+                return None
+            
+            # If title and address provided, send as venue (richer than location)
+            if title and address:
+                result = self._run_async(self.bot.send_venue(
+                    chat_id=chat_id,
+                    latitude=latitude,
+                    longitude=longitude,
+                    title=title,
+                    address=address,
+                    read_timeout=30,
+                    write_timeout=30,
+                    connect_timeout=30
+                ))
+            else:
+                # Send as simple location
+                result = self._run_async(self.bot.send_location(
+                    chat_id=chat_id,
+                    latitude=latitude,
+                    longitude=longitude,
+                    read_timeout=30,
+                    write_timeout=30,
+                    connect_timeout=30
+                ))
+            
+            return result.message_id
+            
+        except TelegramError as e:
+            logger.error(f"Telegram error sending location to {user.username}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error sending Telegram location: {e}", exc_info=True)
             return None
     
     def _run_async(self, coroutine):
