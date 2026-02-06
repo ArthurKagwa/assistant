@@ -31,5 +31,9 @@ jobs:
 
       - name: Build and restart containers on server
         run: |
-          ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && docker compose down && docker compose  up -d --build"
+          ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && docker compose down && docker compose up -d --build"
+
+      - name: Run database migrations
+        run: |
+          ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd ${{ secrets.DEPLOY_PATH }} && docker compose exec -T web python manage.py makemigrations && docker compose exec -T web python manage.py migrate"
 
