@@ -559,12 +559,12 @@ def _get_user_tasks(user: User, parsed: dict) -> list:
     
     # Apply time-based filters based on query type
     if query_type == 'afternoon':
-        # Afternoon: 12 PM to 6 PM
+        # Afternoon: 12 PM to 6 PM (exclusive end)
         afternoon_start = today_start.replace(hour=12)
         afternoon_end = today_start.replace(hour=18)
         queryset = queryset.filter(due_at__gte=afternoon_start, due_at__lt=afternoon_end)
     elif query_type == 'evening':
-        # Evening: 6 PM to midnight
+        # Evening: 6 PM onwards (until midnight)
         evening_start = today_start.replace(hour=18)
         queryset = queryset.filter(due_at__gte=evening_start, due_at__lt=today_end)
     elif query_type == 'morning':
